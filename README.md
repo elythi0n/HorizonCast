@@ -1,4 +1,4 @@
-<center><img height=230px src="./assets/banner.png" alt="HorizonCast" /></center><br />
+<center><img src="./assets/banner.png" alt="HorizonCast" /></center><br />
 
 # HorizonCast
 
