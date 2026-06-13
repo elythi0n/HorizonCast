@@ -1,25 +1,33 @@
 //! `hc-capture` — screen capture.
 //!
 //! Produces NV12 [`CapturedFrame`]s stamped on a monotonic clock, ready for the encoder.
-//! macOS and Windows are implemented via the `scap` crate (ScreenCaptureKit / Windows
-//! Graphics Capture). ScreenCaptureKit yields NV12 directly; WGC yields BGRA, which we
-//! convert with [`bgra_to_nv12`]. Linux (PipeWire) is a stub for now. The `scap` backend
-//! is `cfg(any(macos, windows))` and is built/validated on those OSes, not in the Linux
-//! dev env — but the BGRA→NV12 [`convert`] path is portable and unit-tested everywhere.
+//! Windows uses the `scap` crate (Windows Graphics Capture), yielding BGRA which we convert
+//! with [`bgra_to_nv12`]. macOS also uses `scap` (ScreenCaptureKit, native NV12), but only
+//! when the `screencapturekit` feature is enabled: the current `scap`/screencapturekit-sys
+//! calls APIs that don't exist on macOS 12/13, so by default macOS uses the stub (the app
+//! still does file/URL casting; only live mirror is unavailable). Linux is a stub for now.
+//!
+//! The BGRA→NV12 [`convert`] path is portable and unit-tested on every platform.
 
 mod convert;
 mod frame;
 pub use convert::bgra_to_nv12;
 pub use frame::{CapturedFrame, Nv12Planes};
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(
+    all(target_os = "macos", feature = "screencapturekit"),
+    target_os = "windows"
+))]
 mod scap_backend;
 
 use hc_core::Result;
 
-/// A running screen capture yielding NV12 frames (macOS + Windows).
+/// A running screen capture yielding NV12 frames (Windows; macOS with `screencapturekit`).
 pub struct ScreenCapture {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(
+        all(target_os = "macos", feature = "screencapturekit"),
+        target_os = "windows"
+    ))]
     inner: scap_backend::ScapCapture,
 }
 
@@ -28,17 +36,23 @@ impl ScreenCapture {
     ///
     /// On macOS this triggers the Screen Recording permission prompt on first use.
     pub fn start(fps: u32) -> Result<Self> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        #[cfg(any(
+            all(target_os = "macos", feature = "screencapturekit"),
+            target_os = "windows"
+        ))]
         {
             Ok(Self {
                 inner: scap_backend::ScapCapture::start(fps)?,
             })
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(
+            all(target_os = "macos", feature = "screencapturekit"),
+            target_os = "windows"
+        )))]
         {
             let _ = fps;
             Err(hc_core::Error::Unsupported(
-                "screen capture is implemented on macOS and Windows (so far)".into(),
+                "no screen-capture backend is built for this platform".into(),
             ))
         }
     }
@@ -46,11 +60,17 @@ impl ScreenCapture {
     /// Block until the next captured frame; returns `None` once capture has ended.
     /// Call from a blocking context (it blocks).
     pub fn next_frame(&mut self) -> Option<CapturedFrame> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        #[cfg(any(
+            all(target_os = "macos", feature = "screencapturekit"),
+            target_os = "windows"
+        ))]
         {
             self.inner.next_frame()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(
+            all(target_os = "macos", feature = "screencapturekit"),
+            target_os = "windows"
+        )))]
         {
             None
         }
@@ -58,7 +78,10 @@ impl ScreenCapture {
 
     /// Stop capturing and release resources.
     pub fn stop(self) {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        #[cfg(any(
+            all(target_os = "macos", feature = "screencapturekit"),
+            target_os = "windows"
+        ))]
         {
             self.inner.stop();
         }
@@ -67,17 +90,25 @@ impl ScreenCapture {
 
 #[cfg(test)]
 mod tests {
-    // Only used by the stub-platform test below; gated to match so other platforms
+    // Only used by the stub-platform test below; gated to match so platforms with a backend
     // (which compile that test out) don't see an unused import under `-D warnings`.
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(
+        all(target_os = "macos", feature = "screencapturekit"),
+        target_os = "windows"
+    )))]
     use super::*;
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    // Platforms without a compiled-in capture backend report it unsupported (Linux, and
+    // macOS unless the `screencapturekit` feature is enabled).
+    #[cfg(not(any(
+        all(target_os = "macos", feature = "screencapturekit"),
+        target_os = "windows"
+    )))]
     #[test]
-    fn start_is_unsupported_on_this_platform() {
+    fn start_is_unsupported_without_a_backend() {
         assert!(
             ScreenCapture::start(30).is_err(),
-            "platforms without a capture backend report it unsupported (for now)"
+            "platforms without a capture backend report it unsupported"
         );
     }
 }

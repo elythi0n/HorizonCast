@@ -8,6 +8,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Build the macOS live-mirror pipeline (ScreenCaptureKit capture + VideoToolbox encode).
+# Off by default because both rely on APIs unavailable on macOS 12/13; the default macOS
+# app is cast-only and runs on macOS 12.3+. Enable on a newer Mac: `--features macos-mirror`.
+macos-mirror = ["hc-capture/screencapturekit", "hc-encode/videotoolbox"]
+
 [[bin]]
 name = "hc-app"
 path = "src/main.rs"

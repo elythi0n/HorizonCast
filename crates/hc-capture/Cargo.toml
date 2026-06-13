@@ -8,14 +8,22 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# macOS ScreenCaptureKit capture. Off by default: the current scap/screencapturekit-sys
+# calls AppKit/SCK selectors that don't exist on macOS 12/13 (e.g. `-[SCWindow isActive]`),
+# so the default macOS build is cast-only (no live mirror) and runs on macOS 12.3+. Enable
+# on a newer Mac with `--features screencapturekit` to build the mirror path.
+screencapturekit = ["dep:scap"]
+
 [dependencies]
 hc-core.workspace = true
 tracing.workspace = true
 
-# Cross-platform capture (ScreenCaptureKit on macOS, Windows Graphics Capture on Windows).
+# macOS: ScreenCaptureKit via scap, optional (only with the `screencapturekit` feature).
 [target.'cfg(target_os = "macos")'.dependencies]
-scap = "0.0.8"
+scap = { version = "0.0.8", optional = true }
 
+# Windows: Windows Graphics Capture via scap (always available).
 [target.'cfg(target_os = "windows")'.dependencies]
 scap = "0.0.8"
 # Pin: scap 0.0.8's declared floor is windows-capture 1.3.6, but its code actually needs the
