@@ -1,0 +1,16 @@
+[package]
+name = "hc-discovery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+hc-core.workspace = true
+hc-net = { path = "../hc-net" }
+mdns-sd = "0.20.0"
+tokio.workspace = true
+tracing.workspace = true

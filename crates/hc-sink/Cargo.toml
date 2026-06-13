@@ -1,0 +1,19 @@
+[package]
+name = "hc-sink"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+hc-core.workspace = true
+hc-net = { path = "../hc-net" }
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+axum = "0.8.9"
+reqwest = { version = "0.13.4", default-features = false }

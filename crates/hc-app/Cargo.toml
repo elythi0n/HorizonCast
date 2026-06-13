@@ -1,0 +1,38 @@
+[package]
+name = "hc-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "hc-app"
+path = "src/main.rs"
+
+[dependencies]
+# Software renderer + no default features → no system libraries (fontconfig/GL) needed,
+# so it builds dependency-free on every platform.
+slint = { version = "1.16.1", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-software",
+] }
+hc-core.workspace = true
+hc-discovery = { path = "../hc-discovery" }
+hc-sink = { path = "../hc-sink" }
+hc-capture = { path = "../hc-capture" }
+hc-encode = { path = "../hc-encode" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+# Native file picker (Win/macOS native dialogs; GTK on Linux).
+rfd = "0.17"
+# Open URLs in the user's default browser.
+open = "5"
+
+[build-dependencies]
+slint-build = "1.16.1"

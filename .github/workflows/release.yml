@@ -1,0 +1,80 @@
+name: Release
+
+# Push a version tag (e.g. `v0.1.0`) to build installers on real macOS + Windows runners
+# and attach them to a GitHub Release. `workflow_dispatch` lets you dry-run from the UI.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the Release and upload assets
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── macOS: universal .app bundle → signed (ad-hoc) → .dmg ──────────────────
+  macos:
+    name: macOS .dmg
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build (Intel + Apple Silicon)
+        run: |
+          cargo build --release -p hc-app --target x86_64-apple-darwin
+          cargo build --release -p hc-app --target aarch64-apple-darwin
+
+      - name: Bundle .app and .dmg
+        run: bash scripts/bundle-macos.sh "${GITHUB_REF_NAME#v}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/*.dmg
+
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          fail_on_unmatched_files: true
+
+  # ── Windows: .exe → .zip ──────────────────────────────────────────────────
+  windows:
+    name: Windows .zip
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release -p hc-app
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v',''
+          if (-not $version) { $version = '0.0.0-dev' }
+          New-Item -ItemType Directory -Force -Path dist/HorizonCast | Out-Null
+          Copy-Item target/release/hc-app.exe dist/HorizonCast/HorizonCast.exe
+          $zip = "dist/HorizonCast-$version-windows-x64.zip"
+          Compress-Archive -Path dist/HorizonCast/* -DestinationPath $zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: dist/*.zip
+
+      - name: Attach to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          fail_on_unmatched_files: true

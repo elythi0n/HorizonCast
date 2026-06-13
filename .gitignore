@@ -1,0 +1,13 @@
+docs/*
+docs
+
+.claude/*
+.claude
+
+# Rust
+/target
+/target-win
+**/*.rs.bk
+
+# Build output / packaging
+/dist

@@ -1,0 +1,1150 @@
+// HorizonCast — desktop UI.
+// Design language (see internal GUI spec): deep-night surfaces, the sunset gradient
+// (gold→orange→coral, from the logo) used *sparingly* for the single primary action and
+// active state; magenta/purple for secondary accents. Clean, tabbed, uncluttered.
+
+struct DeviceItem {
+    id: string,
+    name: string,
+    protocol: string, // e.g. "DLNA", "AirPlay"
+}
+
+global Theme {
+    out property <color> bg: #030724;       // deep night
+    out property <color> panel: #0b1038;     // dark navy surface
+    out property <color> panel-hi: #161d52;  // hover / selected surface
+    out property <color> line: #ffffff14;    // hairline separators
+    out property <color> text: #f5f3f0;
+    out property <color> text-dim: #9aa0c8;
+    out property <color> purple: #5e2bae;
+    out property <color> magenta: #c13a8a;
+    out property <color> coral: #ff6b5a;
+    out property <color> orange: #ff8a3d;
+    out property <color> gold: #ffc233;
+    out property <color> good: #36d399;      // success / connected
+    out property <brush> sunset: @linear-gradient(90deg, #ff6b5a, #ff8a3d, #ffc233);
+    out property <length> pad: 16px;
+    out property <length> gap: 10px;
+    out property <length> radius: 12px;
+    out property <length> radius-sm: 8px;
+}
+
+// ── Primitives ──────────────────────────────────────────────────────────────
+
+component Badge inherits Rectangle {
+    in property <string> text;
+    in property <color> tint: Theme.magenta;
+    height: 20px;
+    border-radius: 10px;
+    background: tint.with-alpha(0.16);
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        Text {
+            text: root.text;
+            color: root.tint;
+            font-size: 11px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component SectionLabel inherits Text {
+    color: Theme.text-dim;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+// On/off pill switch.
+component Toggle inherits Rectangle {
+    in-out property <bool> checked;
+    width: 46px;
+    height: 26px;
+    border-radius: 13px;
+    // Solid fill (not the gradient): the software renderer doesn't clip gradients to the
+    // rounded corners, so a gradient here renders as a hard rectangle.
+    background: checked ? Theme.coral : Theme.panel-hi;
+    animate background { duration: 140ms; }
+    knob := Rectangle {
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: Theme.text;
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: 3px;
+        animate x { duration: 140ms; easing: ease-out; }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+        }
+    }
+}
+
+// Equal-width segmented selector.
+component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in-out property <int> selected;
+    height: 38px;
+    border-radius: Theme.radius-sm + 2px;
+    background: Theme.panel;
+    HorizontalLayout {
+        padding: 4px;
+        spacing: 4px;
+        for opt[i] in root.options: Rectangle {
+            border-radius: Theme.radius-sm;
+            background: i == root.selected ? Theme.panel-hi : transparent;
+            animate background { duration: 120ms; }
+            Text {
+                text: opt;
+                color: i == root.selected ? Theme.text : Theme.text-dim;
+                font-size: 12px;
+                font-weight: i == root.selected ? 700 : 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.selected = i;
+                }
+            }
+        }
+    }
+}
+
+// A settings row with a title + subtitle and a trailing toggle.
+component ToggleRow inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in-out property <bool> checked;
+    height: 62px;
+    border-radius: Theme.radius;
+    background: Theme.panel;
+    HorizontalLayout {
+        padding: 14px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-weight: 600;
+            }
+            Text {
+                text: root.subtitle;
+                color: Theme.text-dim;
+                font-size: 11px;
+            }
+        }
+        Rectangle { }
+        VerticalLayout {
+            alignment: center;
+            Toggle {
+                checked <=> root.checked;
+            }
+        }
+    }
+}
+
+// A tappable settings row with a trailing value/chevron.
+component ActionRow inherits Rectangle {
+    in property <string> title;
+    in property <string> value;
+    callback clicked;
+    height: 52px;
+    border-radius: Theme.radius;
+    background: touch.has-hover ? Theme.panel-hi : Theme.panel;
+    animate background { duration: 100ms; }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 10px;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        Rectangle { }
+        Text {
+            text: root.value;
+            color: Theme.text-dim;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: "›";
+            color: Theme.text-dim;
+            font-size: 18px;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// Little drawn tab icons (no image assets, so they always render): 0 = Cast (screen +
+// signal dot), 1 = Source (screen + content lines), 2 = Settings (sliders).
+component TabIcon inherits Rectangle {
+    in property <int> kind;
+    in property <color> tint;
+    width: 16px;
+    height: 16px;
+
+    // 0 — Cast.
+    if root.kind == 0: Rectangle {
+        x: 2px;
+        y: 2px;
+        width: 13px;
+        height: 9px;
+        border-radius: 2px;
+        border-width: 1.5px;
+        border-color: root.tint;
+        background: transparent;
+    }
+    if root.kind == 0: Rectangle {
+        x: 1px;
+        y: 11px;
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: root.tint;
+    }
+
+    // 1 — Source.
+    if root.kind == 1: Rectangle {
+        x: 1px;
+        y: 2px;
+        width: 14px;
+        height: 12px;
+        border-radius: 2px;
+        border-width: 1.5px;
+        border-color: root.tint;
+        background: transparent;
+    }
+    if root.kind == 1: Rectangle {
+        x: 4px;
+        y: 6px;
+        width: 8px;
+        height: 1.5px;
+        background: root.tint;
+    }
+    if root.kind == 1: Rectangle {
+        x: 4px;
+        y: 9px;
+        width: 5px;
+        height: 1.5px;
+        background: root.tint;
+    }
+
+    // 2 — Settings (sliders).
+    if root.kind == 2: Rectangle {
+        x: 1px;
+        y: 5px;
+        width: 14px;
+        height: 1.6px;
+        background: root.tint;
+    }
+    if root.kind == 2: Rectangle {
+        x: 9px;
+        y: 3px;
+        width: 5px;
+        height: 5px;
+        border-radius: 2.5px;
+        background: root.tint;
+    }
+    if root.kind == 2: Rectangle {
+        x: 1px;
+        y: 11px;
+        width: 14px;
+        height: 1.6px;
+        background: root.tint;
+    }
+    if root.kind == 2: Rectangle {
+        x: 2px;
+        y: 9px;
+        width: 5px;
+        height: 5px;
+        border-radius: 2.5px;
+        background: root.tint;
+    }
+}
+
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    in property <int> icon;
+    callback clicked;
+    height: 34px;
+    border-radius: Theme.radius-sm;
+    background: active ? Theme.panel-hi : (touch.has-hover ? Theme.panel-hi.with-alpha(0.5) : transparent);
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        VerticalLayout {
+            alignment: center;
+            padding-bottom: 4px;
+            TabIcon {
+                kind: root.icon;
+                tint: root.active ? Theme.text : Theme.text-dim;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.label;
+                color: root.active ? Theme.text : Theme.text-dim;
+                font-weight: root.active ? 700 : 500;
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component PrimaryButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <color> tint: Theme.orange;
+    callback clicked;
+    height: 48px;
+    border-radius: 14px;
+    // Solid fill (not the gradient): the software renderer doesn't clip gradient
+    // backgrounds to the rounded corners, so a gradient renders as a hard rectangle.
+    background: enabled ? root.tint : Theme.panel-hi;
+    drop-shadow-blur: enabled ? 18px : 0px;
+    drop-shadow-color: root.tint.with-alpha(0.4);
+    drop-shadow-offset-y: 6px;
+    opacity: enabled ? (touch.pressed ? 0.88 : 1.0) : 1.0;
+    animate opacity { duration: 90ms; }
+    Text {
+        text: root.label;
+        color: root.enabled ? #2a0e02 : Theme.text-dim;
+        font-size: 15px;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component GhostButton inherits Rectangle {
+    in property <string> label;
+    callback clicked;
+    height: 48px;
+    border-radius: 14px;
+    background: touch.has-hover ? Theme.coral.with-alpha(0.1) : transparent;
+    border-width: 1px;
+    border-color: Theme.coral.with-alpha(0.55);
+    animate background { duration: 100ms; }
+    Text {
+        text: root.label;
+        color: Theme.coral;
+        font-size: 15px;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component DeviceRow inherits Rectangle {
+    in property <string> name;
+    in property <string> protocol;
+    in property <bool> selected;
+    callback clicked;
+    height: 64px;
+    border-radius: Theme.radius;
+    background: (root.selected || touch.has-hover) ? Theme.panel-hi : Theme.panel;
+    border-width: selected ? 1px : 0px;
+    border-color: Theme.coral.with-alpha(0.6);
+    animate background { duration: 100ms; }
+
+    HorizontalLayout {
+        padding: 13px;
+        spacing: 12px;
+        // Device avatar: a soft sunset-tinted tile with a little TV glyph.
+        Rectangle {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: Theme.gold.with-alpha(0.14);
+            // screen
+            Rectangle {
+                width: 19px;
+                height: 13px;
+                y: parent.height / 2 - 4px;
+                border-radius: 3px;
+                border-width: 1.5px;
+                border-color: Theme.gold;
+                background: transparent;
+            }
+            // stand
+            Rectangle {
+                width: 9px;
+                height: 2px;
+                y: parent.height / 2 + 8px;
+                border-radius: 1px;
+                background: Theme.orange;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 4px;
+            Text {
+                text: root.name;
+                color: Theme.text;
+                font-size: 14px;
+                font-weight: 600;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Badge {
+                    text: root.protocol;
+                }
+            }
+        }
+        Rectangle { } // flexible spacer
+        // selection dot
+        Rectangle {
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background: Theme.coral;
+            opacity: root.selected ? 1.0 : 0.0;
+            animate opacity { duration: 120ms; }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// A cast-mode option row in the "how to cast" sheet.
+component CastOption inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    callback clicked;
+    height: 66px;
+    border-radius: Theme.radius;
+    background: touch.has-hover ? Theme.panel-hi : Theme.panel;
+    animate background { duration: 100ms; }
+    HorizontalLayout {
+        padding: 14px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 14px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.subtitle;
+                color: Theme.text-dim;
+                font-size: 11px;
+            }
+        }
+        Rectangle { }
+        Text {
+            text: "›";
+            color: Theme.text-dim;
+            font-size: 20px;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// A single-line URL text field with placeholder.
+component UrlField inherits Rectangle {
+    in-out property <string> text;
+    callback accepted;
+    height: 46px;
+    border-radius: Theme.radius-sm + 2px;
+    background: Theme.bg;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.coral.with-alpha(0.6) : Theme.line;
+    animate border-color { duration: 120ms; }
+    placeholder := Text {
+        x: 13px;
+        height: 100%;
+        vertical-alignment: center;
+        text: "https://example.com/video.mp4";
+        color: Theme.text-dim;
+        font-size: 13px;
+        visible: root.text == "";
+    }
+    input := TextInput {
+        x: 13px;
+        width: parent.width - 26px;
+        height: 100%;
+        text <=> root.text;
+        color: Theme.text;
+        font-size: 13px;
+        vertical-alignment: center;
+        single-line: true;
+        accepted => {
+            root.accepted();
+        }
+    }
+}
+
+// ── Views ─────────────────────────────────────────────────────────────────
+
+component CastView inherits VerticalLayout {
+    in property <[DeviceItem]> devices;
+    in property <bool> scanning;
+    in property <int> selected;
+    in property <bool> casting;
+    in property <string> now-casting;
+    callback select(int);
+    callback cast();
+    callback stop();
+    callback rescan();
+    spacing: Theme.gap;
+
+    // Status line.
+    HorizontalLayout {
+        spacing: 8px;
+        Text {
+            text: root.casting ? "Now casting" : (root.scanning ? "Scanning your network…" : (root.devices.length > 0 ? "Devices on your network" : "No devices found"));
+            color: Theme.text-dim;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+        Rectangle { }
+        if !root.casting && root.scanning: Rectangle {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: Theme.magenta;
+            opacity: 0.4;
+            animate opacity { duration: 700ms; iteration-count: -1; direction: alternate; }
+        }
+        if !root.casting && !root.scanning: Rectangle {
+            width: 26px;
+            height: 26px;
+            border-radius: 13px;
+            background: refresh.has-hover ? Theme.panel-hi : transparent;
+            animate background { duration: 100ms; }
+            Text {
+                text: "⟳";
+                font-size: 15px;
+                color: Theme.text-dim;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            refresh := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.rescan();
+                }
+            }
+        }
+    }
+
+    // Middle: device list when idle, a now-casting card when casting.
+    Rectangle {
+        vertical-stretch: 1;
+        border-radius: Theme.radius;
+        background: Theme.bg;
+
+        // Idle — empty state.
+        if !root.casting && root.devices.length == 0: VerticalLayout {
+            alignment: center;
+            spacing: 6px;
+            Text {
+                text: root.scanning ? "Looking for TVs…" : "Nothing here yet";
+                color: Theme.text;
+                horizontal-alignment: center;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            Text {
+                text: "Make sure your TV is on and on the same Wi-Fi.";
+                color: Theme.text-dim;
+                horizontal-alignment: center;
+                font-size: 12px;
+            }
+        }
+
+        // Idle — scrollable device list.
+        if !root.casting && root.devices.length > 0: Flickable {
+            width: 100%;
+            height: 100%;
+            viewport-width: self.width;
+            viewport-height: list.preferred-height;
+            list := VerticalLayout {
+                width: parent.width;
+                spacing: 8px;
+                alignment: start;
+                for device[i] in root.devices: DeviceRow {
+                    name: device.name;
+                    protocol: device.protocol;
+                    selected: i == root.selected;
+                    clicked => {
+                        root.select(i);
+                    }
+                }
+            }
+        }
+
+        // Casting — now-casting hero card.
+        if root.casting: VerticalLayout {
+            alignment: center;
+            spacing: 12px;
+            padding: 20px;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    height: 24px;
+                    border-radius: 12px;
+                    background: Theme.good.with-alpha(0.16);
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 12px;
+                        spacing: 6px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: Theme.good;
+                            }
+                        }
+                        Text {
+                            text: "LIVE";
+                            color: Theme.good;
+                            font-size: 11px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+            Text {
+                text: "Casting to";
+                color: Theme.text-dim;
+                font-size: 12px;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: root.now-casting;
+                color: Theme.text;
+                font-size: 18px;
+                font-weight: 800;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: "Adjust quality & audio in the Source tab.";
+                color: Theme.text-dim;
+                font-size: 11px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    // Action button.
+    if !root.casting: PrimaryButton {
+        label: "Cast";
+        enabled: root.selected >= 0;
+        clicked => {
+            root.cast();
+        }
+    }
+    if root.casting: PrimaryButton {
+        label: "Stop casting";
+        tint: Theme.coral;
+        clicked => {
+            root.stop();
+        }
+    }
+}
+
+component SourceView inherits VerticalLayout {
+    in-out property <bool> audio-on;
+    in-out property <int> quality;
+    in-out property <int> fps;
+    spacing: 14px;
+
+    SectionLabel {
+        text: "SHARE";
+    }
+    // Capture target (only whole-screen for now).
+    Rectangle {
+        height: 62px;
+        border-radius: Theme.radius;
+        background: Theme.panel;
+        HorizontalLayout {
+            padding: 14px;
+            spacing: 12px;
+            Rectangle {
+                width: 34px;
+                height: 34px;
+                border-radius: 9px;
+                background: Theme.purple.with-alpha(0.22);
+                Rectangle {
+                    width: 18px;
+                    height: 13px;
+                    border-radius: 2px;
+                    border-width: 1.5px;
+                    border-color: Theme.text;
+                    background: transparent;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                Text {
+                    text: "Entire screen";
+                    color: Theme.text;
+                    font-weight: 600;
+                }
+                Text {
+                    text: "Your primary display";
+                    color: Theme.text-dim;
+                    font-size: 11px;
+                }
+            }
+            Rectangle { }
+            VerticalLayout {
+                alignment: center;
+                Badge {
+                    text: "ACTIVE";
+                    tint: Theme.good;
+                }
+            }
+        }
+    }
+
+    SectionLabel {
+        text: "VIDEO";
+    }
+    VerticalLayout {
+        spacing: 7px;
+        Text {
+            text: "Resolution";
+            color: Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        Segmented {
+            options: ["Auto", "1080p", "1440p", "4K"];
+            selected <=> root.quality;
+        }
+    }
+    VerticalLayout {
+        spacing: 7px;
+        Text {
+            text: "Frame rate";
+            color: Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        Segmented {
+            options: ["60 fps", "30 fps"];
+            selected <=> root.fps;
+        }
+    }
+
+    SectionLabel {
+        text: "AUDIO";
+    }
+    ToggleRow {
+        title: "System audio";
+        subtitle: "Send sound along with the picture";
+        checked <=> root.audio-on;
+    }
+
+    Rectangle {
+        vertical-stretch: 1;
+    }
+}
+
+component SettingsView inherits VerticalLayout {
+    in-out property <bool> keep-awake;
+    in-out property <bool> launch-at-login;
+    callback check-updates();
+    callback open-repo();
+    spacing: 14px;
+
+    SectionLabel {
+        text: "PLAYBACK";
+    }
+    ToggleRow {
+        title: "Keep display awake";
+        subtitle: "Prevent sleep while casting";
+        checked <=> root.keep-awake;
+    }
+
+    SectionLabel {
+        text: "GENERAL";
+    }
+    ToggleRow {
+        title: "Launch at login";
+        subtitle: "Start HorizonCast when you sign in";
+        checked <=> root.launch-at-login;
+    }
+    ActionRow {
+        title: "Check for updates";
+        value: "v0.1.0";
+        clicked => {
+            root.check-updates();
+        }
+    }
+
+    Rectangle {
+        vertical-stretch: 1;
+    }
+
+    // About / attribution.
+    VerticalLayout {
+        alignment: center;
+        spacing: 3px;
+        Text {
+            text: "HorizonCast";
+            color: Theme.text;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: "Version 0.1.0";
+            color: Theme.text-dim;
+            font-size: 11px;
+            horizontal-alignment: center;
+        }
+        // Star-on-GitHub link (opens the repo in the default browser).
+        Rectangle {
+            height: 20px;
+            Text {
+                text: "Star on GitHub";
+                color: star-touch.has-hover ? Theme.gold : Theme.coral;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            star-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.open-repo();
+                }
+            }
+        }
+    }
+}
+
+// ── Window ──────────────────────────────────────────────────────────────────
+
+export component AppWindow inherits Window {
+    title: "HorizonCast";
+    width: 420px;
+    height: 620px;
+    background: Theme.bg;
+    default-font-size: 14px;
+
+    in property <[DeviceItem]> devices;
+    in property <bool> scanning: true;
+    in property <int> selected: -1;
+    in property <bool> casting: false;
+    in property <string> now-casting: "";
+    // Source / Settings state — hoisted here so it survives tab switches.
+    in-out property <bool> audio-on: true;
+    in-out property <int> quality: 0;
+    in-out property <int> fps: 0;
+    in-out property <bool> keep-awake: true;
+    in-out property <bool> launch-at-login: false;
+    property <int> tab: 0;
+    // Cast-mode chooser sheet.
+    property <bool> sheet-open: false;
+    property <int> sheet-mode: 0; // 0 = choose a mode, 1 = enter a link
+    in-out property <string> url-text: "";
+
+    callback select(int);
+    callback stop();
+    callback rescan();
+    callback check-updates();
+    callback open-repo();
+    // The three ways to cast (chosen from the sheet).
+    callback mirror();
+    callback cast-file();
+    callback cast-url(string);
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        padding: Theme.pad;
+        spacing: Theme.pad;
+
+        // Header: logo + wordmark + tagline.
+        HorizontalLayout {
+            spacing: 11px;
+            Image {
+                source: @image-url("logo.png");
+                image-fit: contain;
+                width: 36px;
+                height: 36px;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                Text {
+                    text: "HorizonCast";
+                    color: Theme.text;
+                    font-size: 18px;
+                    font-weight: 800;
+                }
+                Text {
+                    text: "Cast to any TV";
+                    color: Theme.text-dim;
+                    font-size: 11px;
+                }
+            }
+            Rectangle { }
+            // Live casting indicator.
+            if root.casting: Rectangle {
+                width: 10px;
+                height: 10px;
+                border-radius: 5px;
+                background: Theme.good;
+                animate opacity { duration: 800ms; iteration-count: -1; direction: alternate; }
+            }
+        }
+
+        // Tab bar.
+        Rectangle {
+            height: 42px;
+            border-radius: Theme.radius-sm + 2px;
+            background: Theme.panel;
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                TabButton {
+                    label: "Cast";
+                    icon: 0;
+                    active: root.tab == 0;
+                    clicked => {
+                        root.tab = 0;
+                    }
+                }
+                TabButton {
+                    label: "Source";
+                    icon: 1;
+                    active: root.tab == 1;
+                    clicked => {
+                        root.tab = 1;
+                    }
+                }
+                TabButton {
+                    label: "Settings";
+                    icon: 2;
+                    active: root.tab == 2;
+                    clicked => {
+                        root.tab = 2;
+                    }
+                }
+            }
+        }
+
+        // Content.
+        if root.tab == 0: CastView {
+            vertical-stretch: 1;
+            devices: root.devices;
+            scanning: root.scanning;
+            selected: root.selected;
+            casting: root.casting;
+            now-casting: root.now-casting;
+            select(i) => {
+                root.select(i);
+            }
+            cast => {
+                root.sheet-mode = 0;
+                root.sheet-open = true;
+            }
+            stop => {
+                root.stop();
+            }
+            rescan => {
+                root.rescan();
+            }
+        }
+        if root.tab == 1: SourceView {
+            vertical-stretch: 1;
+            audio-on <=> root.audio-on;
+            quality <=> root.quality;
+            fps <=> root.fps;
+        }
+        if root.tab == 2: SettingsView {
+            vertical-stretch: 1;
+            keep-awake <=> root.keep-awake;
+            launch-at-login <=> root.launch-at-login;
+            check-updates => {
+                root.check-updates();
+            }
+            open-repo => {
+                root.open-repo();
+            }
+        }
+    }
+
+    // ── Cast-mode chooser sheet (overlay) ──
+    if root.sheet-open: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+        // Tap the dimmed backdrop to dismiss.
+        TouchArea {
+            clicked => {
+                root.sheet-open = false;
+            }
+        }
+
+        // Bottom sheet card.
+        card := Rectangle {
+            x: Theme.pad;
+            width: parent.width - 2 * Theme.pad;
+            height: root.sheet-mode == 0 ? 318px : 208px;
+            y: parent.height - self.height - Theme.pad;
+            border-radius: 18px;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            drop-shadow-blur: 30px;
+            drop-shadow-color: #00000099;
+            drop-shadow-offset-y: 10px;
+            // Swallow clicks so tapping the card doesn't dismiss it.
+            TouchArea { }
+
+            VerticalLayout {
+                padding: 18px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    Text {
+                        text: root.sheet-mode == 0 ? "How do you want to cast?" : "Cast a link";
+                        color: Theme.text;
+                        font-size: 16px;
+                        font-weight: 800;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { }
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: close-touch.has-hover ? Theme.panel-hi : transparent;
+                        Text {
+                            text: "✕";
+                            color: Theme.text-dim;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        close-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.sheet-open = false;
+                            }
+                        }
+                    }
+                }
+
+                if root.sheet-mode == 0: VerticalLayout {
+                    spacing: 10px;
+                    CastOption {
+                        title: "Mirror your screen";
+                        subtitle: "Live — share everything on screen";
+                        clicked => {
+                            root.sheet-open = false;
+                            root.mirror();
+                        }
+                    }
+                    CastOption {
+                        title: "Play a video file";
+                        subtitle: "Pick a file to play on the TV";
+                        clicked => {
+                            root.sheet-open = false;
+                            root.cast-file();
+                        }
+                    }
+                    CastOption {
+                        title: "Cast a link";
+                        subtitle: "Paste a video URL";
+                        clicked => {
+                            root.sheet-mode = 1;
+                        }
+                    }
+                }
+
+                if root.sheet-mode == 1: VerticalLayout {
+                    spacing: 12px;
+                    UrlField {
+                        text <=> root.url-text;
+                        accepted => {
+                            if (root.url-text != "") {
+                                root.sheet-open = false;
+                                root.cast-url(root.url-text);
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        GhostButton {
+                            label: "Back";
+                            clicked => {
+                                root.sheet-mode = 0;
+                            }
+                        }
+                        PrimaryButton {
+                            label: "Start";
+                            enabled: root.url-text != "";
+                            clicked => {
+                                root.sheet-open = false;
+                                root.cast-url(root.url-text);
+                            }
+                        }
+                    }
+                    Rectangle { }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,22 @@
+[package]
+name = "hc-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+hc-core.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+reqwest = { version = "0.13.4", default-features = false, features = ["stream"] }
+quick-xml = "0.40.1"
+axum = "0.8.9"
+tokio-util = { version = "0.7.18", features = ["io"] }
+plist = { version = "1.8.0", default-features = false }
+tokio-stream = { version = "0.1.18", features = ["sync"] }
+# reqwest (http-only) and quick-xml added via `cargo add` to pin resolved versions.

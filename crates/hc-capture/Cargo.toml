@@ -1,0 +1,27 @@
+[package]
+name = "hc-capture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+hc-core.workspace = true
+tracing.workspace = true
+
+# Cross-platform capture (ScreenCaptureKit on macOS, Windows Graphics Capture on Windows).
+[target.'cfg(target_os = "macos")'.dependencies]
+scap = "0.0.8"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+scap = "0.0.8"
+# Pin: scap 0.0.8's declared floor is windows-capture 1.3.6, but its code actually needs the
+# API as of 1.4.4 (`capture::Context`, `Frame::as_nopadding_buffer`, the 5-arg
+# `Settings::new`). 1.5.0 changed `Settings::new` to 8 args and breaks scap; 1.3.x lacks the
+# newer APIs. So we pin exactly 1.4.4 (verified against scap's call sites). We don't use
+# windows-capture directly — this just constrains the resolution graph. Revisit if scap
+# upstream pins it correctly.
+windows-capture = "=1.4.4"
