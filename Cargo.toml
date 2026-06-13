@@ -29,3 +29,11 @@ clap = { version = "4", features = ["derive"] }
 [workspace.lints.clippy]
 # Project-wide lint posture; CI runs `clippy --all-targets -- -D warnings`.
 all = { level = "warn", priority = -1 }
+
+# Vendored Slint winit backend with a one-line fix: upstream 1.16.1 guards its macOS frame
+# throttle by checking for the CADisplayLink *class* (present on macOS 12/13), then calls the
+# `displayLinkWithTarget:selector:` method that only exists on macOS 14+, aborting on 12/13.
+# Our copy checks the selector and falls back to the timer throttle. Drop this once a released
+# Slint version fixes it upstream. See vendor/i-slint-backend-winit/frame_throttle/macos_display_link.rs.
+[patch.crates-io]
+i-slint-backend-winit = { path = "vendor/i-slint-backend-winit" }

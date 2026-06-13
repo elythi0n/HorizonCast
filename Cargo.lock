@@ -2140,8 +2140,6 @@ dependencies = [
 [[package]]
 name = "i-slint-backend-winit"
 version = "1.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4df6ec88d452e3c22e418d20c96bc1ccbc9509e81e6596426d3388bf226a5f9"
 dependencies = [
  "block2 0.6.2",
  "bytemuck",
