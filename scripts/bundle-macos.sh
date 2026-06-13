@@ -58,7 +58,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key>         <string>$VERSION</string>
   <key>CFBundleShortVersionString</key> <string>$VERSION</string>
   <key>CFBundlePackageType</key>     <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>  <string>13.0</string>
+  <key>LSMinimumSystemVersion</key>  <string>12.3</string>
   <key>NSHighResolutionCapable</key> <true/>
   <key>LSApplicationCategoryType</key> <string>public.app-category.video</string>
 </dict>
