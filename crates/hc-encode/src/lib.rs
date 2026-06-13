@@ -1,11 +1,13 @@
 //! `hc-encode` — hardware H.264 video encoding.
 //!
 //! Takes [`hc_capture::CapturedFrame`]s (NV12) and produces Annex-B H.264 access units
-//! ready for `hc_net::mpegts::MpegTsMuxer`. macOS uses VideoToolbox; Windows uses Media
-//! Foundation; Linux (VAAPI) is a stub for now. The platform backends are `cfg`-gated and
-//! built/validated on their OS, not in the Linux dev env.
+//! ready for `hc_net::mpegts::MpegTsMuxer`. Windows uses Media Foundation. macOS uses
+//! VideoToolbox, but only when the `videotoolbox` feature is enabled — it's a draft that
+//! must be finished/validated on a real Mac, so by default macOS uses the stub (and the
+//! desktop app there still does file/URL casting; only live mirror is unavailable). Linux
+//! (VAAPI) is a stub for now.
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "videotoolbox"))]
 mod macos;
 
 #[cfg(target_os = "windows")]
@@ -53,9 +55,10 @@ pub struct EncodedFrame {
     pub keyframe: bool,
 }
 
-/// A hardware H.264 encoder (VideoToolbox on macOS, Media Foundation on Windows).
+/// A hardware H.264 encoder (Media Foundation on Windows; VideoToolbox on macOS when the
+/// `videotoolbox` feature is enabled).
 pub struct H264Encoder {
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
     inner: macos::VtEncoder,
     #[cfg(target_os = "windows")]
     inner: mediafoundation::MfEncoder,
@@ -64,7 +67,7 @@ pub struct H264Encoder {
 impl H264Encoder {
     /// Create an encoder for the given configuration.
     pub fn new(config: EncoderConfig) -> Result<Self> {
-        #[cfg(target_os = "macos")]
+        #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
         {
             Ok(Self {
                 inner: macos::VtEncoder::new(config)?,
@@ -76,11 +79,14 @@ impl H264Encoder {
                 inner: mediafoundation::MfEncoder::new(config)?,
             })
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(
+            all(target_os = "macos", feature = "videotoolbox"),
+            target_os = "windows"
+        )))]
         {
             let _ = config;
             Err(hc_core::Error::Unsupported(
-                "H.264 encoding is implemented on macOS and Windows (so far)".into(),
+                "no H.264 encoding backend is built for this platform".into(),
             ))
         }
     }
@@ -89,11 +95,17 @@ impl H264Encoder {
     /// encoder emitted (low-latency config emits ~one per frame, but it may return zero
     /// while priming or several when flushing).
     pub fn encode(&mut self, frame: &CapturedFrame, pts: u64) -> Result<Vec<EncodedFrame>> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        #[cfg(any(
+            all(target_os = "macos", feature = "videotoolbox"),
+            target_os = "windows"
+        ))]
         {
             self.inner.encode(frame, pts)
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(
+            all(target_os = "macos", feature = "videotoolbox"),
+            target_os = "windows"
+        )))]
         {
             let _ = (frame, pts);
             Ok(Vec::new())
@@ -102,11 +114,17 @@ impl H264Encoder {
 
     /// Flush any buffered access units at end of stream.
     pub fn finish(&mut self) -> Result<Vec<EncodedFrame>> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        #[cfg(any(
+            all(target_os = "macos", feature = "videotoolbox"),
+            target_os = "windows"
+        ))]
         {
             self.inner.finish()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(
+            all(target_os = "macos", feature = "videotoolbox"),
+            target_os = "windows"
+        )))]
         {
             Ok(Vec::new())
         }
@@ -135,12 +153,17 @@ mod tests {
         assert!(c.keyframe_interval > 0);
     }
 
-    #[cfg(not(target_os = "macos"))]
+    // Platforms without a compiled-in backend report encoding unsupported (Linux, and
+    // macOS unless the `videotoolbox` feature is enabled).
+    #[cfg(not(any(
+        all(target_os = "macos", feature = "videotoolbox"),
+        target_os = "windows"
+    )))]
     #[test]
-    fn new_is_unsupported_off_macos() {
+    fn new_is_unsupported_without_a_backend() {
         assert!(
             H264Encoder::new(EncoderConfig::default()).is_err(),
-            "non-macOS platforms report encoding unsupported (for now)"
+            "platforms without an encoder backend report it unsupported"
         );
     }
 }

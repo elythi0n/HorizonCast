@@ -8,18 +8,31 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# macOS VideoToolbox encoder. Off by default: it's a draft that needs finishing on a real
+# Mac, so the default macOS build uses the stub. Enable with `--features videotoolbox`.
+videotoolbox = [
+    "dep:block2",
+    "dep:objc2-core-foundation",
+    "dep:objc2-core-media",
+    "dep:objc2-core-video",
+    "dep:objc2-foundation",
+    "dep:objc2-video-toolbox",
+]
+
 [dependencies]
 hc-core.workspace = true
 hc-capture = { path = "../hc-capture" }
 tracing.workspace = true
 
+# macOS VideoToolbox deps — optional, pulled in only by the `videotoolbox` feature.
 [target.'cfg(target_os = "macos")'.dependencies]
-block2 = "0.6.2"
-objc2-core-foundation = "0.3.2"
-objc2-core-media = "0.3.2"
-objc2-core-video = "0.3.2"
-objc2-foundation = "0.3.2"
-objc2-video-toolbox = "0.3.2"
+block2 = { version = "0.6.2", optional = true }
+objc2-core-foundation = { version = "0.3.2", optional = true }
+objc2-core-media = { version = "0.3.2", optional = true }
+objc2-core-video = { version = "0.3.2", optional = true }
+objc2-foundation = { version = "0.3.2", optional = true }
+objc2-video-toolbox = { version = "0.3.2", optional = true }
 
 # Windows: hardware/software H.264 via Media Foundation (no extra build tools needed).
 [target.'cfg(target_os = "windows")'.dependencies]

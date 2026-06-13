@@ -67,6 +67,9 @@ impl ScreenCapture {
 
 #[cfg(test)]
 mod tests {
+    // Only used by the stub-platform test below; gated to match so other platforms
+    // (which compile that test out) don't see an unused import under `-D warnings`.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     use super::*;
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
